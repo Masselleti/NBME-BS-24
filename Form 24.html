@@ -1137,6 +1137,19 @@
         html.dark .lm-count { color: #7fd6f0 !important; background: rgba(33, 174, 217, 0.22) !important; }
         .lm-row.lm-disabled { opacity:.45; cursor:not-allowed; }
         .lm-row.lm-disabled:hover { background:transparent; }
+        /* ===== Organ-system subcategories (nested under Pathology & Physiology) ===== */
+        .lm-group { display:block; }
+        .lm-toggle { flex:0 0 auto; width:16px; text-align:center; color:var(--muted); font-size:0.72em;
+            line-height:1; cursor:pointer; user-select:none; transition:color .12s ease; }
+        .lm-toggle:hover { color:var(--nbme-header-bot); }
+        .lm-toggle-blank { cursor:default; visibility:hidden; }
+        .lm-row.lm-parent { cursor:pointer; }
+        .lm-children { display:none; }
+        .lm-children.expanded { display:block; }
+        .lm-row.lm-subrow { padding-left:52px; background:rgba(127,127,127,0.045); }
+        .lm-row.lm-subrow .lm-name { font-weight:600; font-size:0.94em; }
+        .lm-row.lm-subrow .lm-cb { width:17px; height:17px; }
+        .lm-row.lm-subrow .lm-count { font-size:0.85em; min-width:34px; padding:2px 9px; }
         .lm-actionbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:20px;
             padding:16px 18px; border:1px solid var(--border); border-radius:14px; background:var(--card);
             box-shadow:var(--elev-1); position:sticky; bottom:12px; flex-wrap:wrap; }
@@ -2641,6 +2654,134 @@
         let lmSel = { discipline: new Set(), block: new Set() };
         let lmBlocks = [];
 
+        // ===== Organ-system subcategories for Pathology & Physiology (added) =====
+        // qid -> organ system (inferred from item content); covers the Pathology & Physiology items only.
+        const PATHOPHYS_SYSTEM_MAP = {"1":"Cardiovascular","2":"Behavioral Health & Nervous/Special Senses","6":"Gastrointestinal","11":"Respiratory and Renal/Urinary","17":"Musculoskeletal, Skin & Subcutaneous","20":"Cardiovascular","21":"Behavioral Health & Nervous/Special Senses","24":"Reproductive & Endocrine","25":"Respiratory and Renal/Urinary","26":"Behavioral Health & Nervous/Special Senses","31":"Behavioral Health & Nervous/Special Senses","34":"Respiratory and Renal/Urinary","38":"Cardiovascular","41":"Respiratory and Renal/Urinary","44":"Gastrointestinal","46":"Respiratory and Renal/Urinary","47":"Reproductive & Endocrine","48":"Cardiovascular","50":"Cardiovascular","51":"Respiratory and Renal/Urinary","54":"Respiratory and Renal/Urinary","56":"Respiratory and Renal/Urinary","57":"Cardiovascular","58":"Cardiovascular","59":"Respiratory and Renal/Urinary","64":"Respiratory and Renal/Urinary","66":"Behavioral Health & Nervous/Special Senses","75":"Respiratory and Renal/Urinary","76":"Reproductive & Endocrine","79":"Gastrointestinal","81":"Cardiovascular","84":"Gastrointestinal","88":"Reproductive & Endocrine","92":"Gastrointestinal","93":"Behavioral Health & Nervous/Special Senses","94":"Cardiovascular","96":"Respiratory and Renal/Urinary","99":"Cardiovascular","100":"Cardiovascular","105":"Musculoskeletal, Skin & Subcutaneous","108":"Musculoskeletal, Skin & Subcutaneous","114":"Respiratory and Renal/Urinary","115":"Respiratory and Renal/Urinary","117":"Reproductive & Endocrine","121":"Musculoskeletal, Skin & Subcutaneous","125":"Cardiovascular","126":"Behavioral Health & Nervous/Special Senses","129":"Reproductive & Endocrine","130":"Musculoskeletal, Skin & Subcutaneous","131":"Respiratory and Renal/Urinary","136":"Respiratory and Renal/Urinary","139":"Reproductive & Endocrine","145":"Gastrointestinal","147":"Musculoskeletal, Skin & Subcutaneous","148":"Multisystem Processes & Disorders","151":"Respiratory and Renal/Urinary","153":"Respiratory and Renal/Urinary","154":"Musculoskeletal, Skin & Subcutaneous","155":"Multisystem Processes & Disorders","156":"Reproductive & Endocrine","157":"Blood & Lymphoreticular and Immune","159":"Cardiovascular","162":"Cardiovascular","165":"Reproductive & Endocrine","168":"Gastrointestinal","172":"Cardiovascular","177":"Reproductive & Endocrine","180":"Respiratory and Renal/Urinary","183":"Gastrointestinal","184":"Reproductive & Endocrine","187":"Reproductive & Endocrine","192":"Blood & Lymphoreticular and Immune","194":"Musculoskeletal, Skin & Subcutaneous","195":"Blood & Lymphoreticular and Immune"};
+        const SUBCAT_DISCIPLINES = ["Pathology", "Physiology"];
+        const ORGAN_SYSTEM_ORDER = [
+            "Multisystem Processes & Disorders",
+            "Musculoskeletal, Skin & Subcutaneous",
+            "Behavioral Health & Nervous/Special Senses",
+            "Respiratory and Renal/Urinary",
+            "Blood & Lymphoreticular and Immune",
+            "Reproductive & Endocrine",
+            "Gastrointestinal",
+            "Cardiovascular"
+        ];
+        const DISC_SUBSEP = " ||| ";
+        function discHasSubcats(disc) { return SUBCAT_DISCIPLINES.indexOf(disc) !== -1; }
+        function discSystemsFor(disc) {
+            const present = {};
+            for (const k in DISCIPLINE_MAP) {
+                if (DISCIPLINE_MAP[k] === disc) { const s = PATHOPHYS_SYSTEM_MAP[k]; if (s) present[s] = true; }
+            }
+            return ORGAN_SYSTEM_ORDER.filter(s => present[s]);
+        }
+        function discLeafQids(leafKey) {
+            const ids = [];
+            const sep = leafKey.indexOf(DISC_SUBSEP);
+            if (sep === -1) {
+                for (const k in DISCIPLINE_MAP) if (DISCIPLINE_MAP[k] === leafKey) ids.push(parseInt(k, 10));
+            } else {
+                const disc = leafKey.slice(0, sep), sys = leafKey.slice(sep + DISC_SUBSEP.length);
+                for (const k in DISCIPLINE_MAP) if (DISCIPLINE_MAP[k] === disc && PATHOPHYS_SYSTEM_MAP[k] === sys) ids.push(parseInt(k, 10));
+            }
+            return ids;
+        }
+        function discLeafCount(leafKey) { return discLeafQids(leafKey).length; }
+        function discLeafKeys(disc) {
+            if (!discHasSubcats(disc)) return [disc];
+            return discSystemsFor(disc).map(s => disc + DISC_SUBSEP + s);
+        }
+        function discSelectedIds(selSet) {
+            const ids = new Set();
+            selSet.forEach(lk => discLeafQids(lk).forEach(id => ids.add(id)));
+            return [...ids].sort((a, b) => a - b);
+        }
+        function discActiveKeys() {
+            const counts = disciplineCounts();
+            const keys = [];
+            DISCIPLINE_DEFS.forEach(d => {
+                if ((counts[d.name] || 0) === 0) return;
+                discLeafKeys(d.name).forEach(lk => { if (discLeafCount(lk) > 0) keys.push(lk); });
+            });
+            return keys;
+        }
+        function buildDisciplineGrid(grid, selSet, onChange) {
+            grid.innerHTML = '';
+            const counts = disciplineCounts();
+            DISCIPLINE_DEFS.forEach(d => {
+                const total = counts[d.name] || 0;
+                const group = document.createElement('div');
+                group.className = 'lm-group';
+                if (discHasSubcats(d.name) && total > 0) {
+                    group.appendChild(discParentGroup(d, total, selSet, onChange));
+                } else {
+                    group.appendChild(discLeafRow(d.name, d.name, 'Blueprint ' + d.range + '%', total, selSet, onChange, total === 0));
+                }
+                grid.appendChild(group);
+            });
+        }
+        function discLeafRow(leafKey, name, sub, count, selSet, onChange, disabled) {
+            const row = document.createElement('label');
+            row.className = 'lm-row' + (disabled ? ' lm-disabled' : '');
+            row.innerHTML = '<span class="lm-toggle lm-toggle-blank">▶</span>' +
+                '<input type="checkbox" class="lm-cb"' + (selSet.has(leafKey) ? ' checked' : '') + (disabled ? ' disabled' : '') + '>' +
+                '<span class="lm-name">' + name + '<span class="lm-sub">' + sub + '</span></span>' +
+                '<span class="lm-count">' + count + '</span>';
+            if (!disabled) {
+                const cb = row.querySelector('input');
+                cb.addEventListener('change', () => { if (cb.checked) selSet.add(leafKey); else selSet.delete(leafKey); onChange(); });
+            }
+            return row;
+        }
+        function discParentGroup(d, total, selSet, onChange) {
+            const frag = document.createDocumentFragment();
+            const systems = discSystemsFor(d.name);
+            const leafKeys = systems.map(s => d.name + DISC_SUBSEP + s);
+            const prow = document.createElement('div');
+            prow.className = 'lm-row lm-parent';
+            const tog = document.createElement('span'); tog.className = 'lm-toggle'; tog.textContent = '▶';
+            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.className = 'lm-cb';
+            const nameWrap = document.createElement('span'); nameWrap.className = 'lm-name';
+            nameWrap.innerHTML = d.name + '<span class="lm-sub">Blueprint ' + d.range + '% · by organ system</span>';
+            const cnt = document.createElement('span'); cnt.className = 'lm-count'; cnt.textContent = total;
+            prow.appendChild(tog); prow.appendChild(cb); prow.appendChild(nameWrap); prow.appendChild(cnt);
+            const childWrap = document.createElement('div'); childWrap.className = 'lm-children';
+            function syncParent() {
+                const n = leafKeys.filter(k => selSet.has(k)).length;
+                cb.checked = n > 0 && n === leafKeys.length;
+                cb.indeterminate = n > 0 && n < leafKeys.length;
+            }
+            systems.forEach((s, i) => {
+                const lk = leafKeys[i];
+                const c = discLeafCount(lk);
+                const srow = document.createElement('label');
+                srow.className = 'lm-row lm-subrow';
+                srow.innerHTML = '<input type="checkbox" class="lm-cb"' + (selSet.has(lk) ? ' checked' : '') + '>' +
+                    '<span class="lm-name">' + s + '</span>' +
+                    '<span class="lm-count">' + c + '</span>';
+                const scb = srow.querySelector('input');
+                scb.addEventListener('change', () => { if (scb.checked) selSet.add(lk); else selSet.delete(lk); syncParent(); onChange(); });
+                childWrap.appendChild(srow);
+            });
+            cb.addEventListener('change', () => {
+                const on = cb.checked;
+                leafKeys.forEach(k => { if (on) selSet.add(k); else selSet.delete(k); });
+                childWrap.querySelectorAll('input').forEach((el, i) => { el.checked = selSet.has(leafKeys[i]); });
+                cb.indeterminate = false;
+                onChange();
+            });
+            function toggleExpand() {
+                const open = childWrap.classList.toggle('expanded');
+                tog.textContent = open ? '▼' : '▶';
+            }
+            prow.addEventListener('click', (e) => { if (e.target === cb) return; toggleExpand(); });
+            syncParent();
+            frag.appendChild(prow);
+            frag.appendChild(childWrap);
+            return frag;
+        }
         function disciplineCounts() {
             const c = {};
             for (const k in DISCIPLINE_MAP) { const d = DISCIPLINE_MAP[k]; c[d] = (c[d]||0)+1; }
@@ -2683,13 +2824,9 @@
             const note = document.getElementById('lm-note');
             grid.innerHTML = '';
             if (lmView === 'discipline') {
-                note.textContent = 'This Form 24 viewer contains 198 questions extracted from the Medicine Academy Chrome session. Correct answers and full explanations were not exposed by the capture.';
+                note.textContent = 'This Form 24 viewer contains 198 questions extracted from the Medicine Academy Chrome session. Correct answers and full explanations were not exposed by the capture. Pathology and Physiology are also grouped by organ system (inferred from item content).';
                 note.style.display = 'block';
-                const counts = disciplineCounts();
-                DISCIPLINE_DEFS.forEach(d => {
-                    const n = counts[d.name] || 0;
-                    grid.appendChild(lmRow('discipline', d.name, d.name, 'Blueprint ' + d.range + '%', n, n === 0));
-                });
+                buildDisciplineGrid(grid, lmSel.discipline, lmUpdateBar);
             } else {
                 note.style.display = 'none';
                 lmBlocks.forEach(b => {
@@ -2718,8 +2855,7 @@
         function lmSelectedIds() {
             const ids = new Set();
             if (lmView === 'discipline') {
-                const sel = lmSel.discipline;
-                for (const k in DISCIPLINE_MAP) { if (sel.has(DISCIPLINE_MAP[k])) ids.add(parseInt(k, 10)); }
+                discSelectedIds(lmSel.discipline).forEach(id => ids.add(id));
             } else {
                 const sel = lmSel.block;
                 if (sel.size) {
@@ -2737,8 +2873,7 @@
 
         function lmActiveKeys() {
             if (lmView === 'discipline') {
-                const counts = disciplineCounts();
-                return DISCIPLINE_DEFS.filter(d => (counts[d.name] || 0) > 0).map(d => d.name);
+                return discActiveKeys();
             }
             return lmBlocks.filter(b => b.count > 0).map(b => String(b.id));
         }
@@ -2805,13 +2940,9 @@
             const note = document.getElementById('ex-note');
             grid.innerHTML = '';
             if (exView === 'discipline') {
-                note.textContent = 'This Form 24 viewer contains 198 questions extracted from the Medicine Academy Chrome session. Correct answers and full explanations were not exposed by the capture.';
+                note.textContent = 'This Form 24 viewer contains 198 questions extracted from the Medicine Academy Chrome session. Correct answers and full explanations were not exposed by the capture. Pathology and Physiology are also grouped by organ system (inferred from item content).';
                 note.style.display = 'block';
-                const counts = disciplineCounts();
-                DISCIPLINE_DEFS.forEach(d => {
-                    const n = counts[d.name] || 0;
-                    grid.appendChild(exRow('discipline', d.name, d.name, 'Blueprint ' + d.range + '%', n, n === 0));
-                });
+                buildDisciplineGrid(grid, exSel.discipline, exUpdateBar);
             } else {
                 note.style.display = 'none';
                 lmBlocks.forEach(b => {
@@ -2840,8 +2971,7 @@
         function exSelectedIds() {
             const ids = new Set();
             if (exView === 'discipline') {
-                const sel = exSel.discipline;
-                for (const k in DISCIPLINE_MAP) { if (sel.has(DISCIPLINE_MAP[k])) ids.add(parseInt(k, 10)); }
+                discSelectedIds(exSel.discipline).forEach(id => ids.add(id));
             } else {
                 const sel = exSel.block;
                 if (sel.size) {
@@ -2859,8 +2989,7 @@
 
         function exActiveKeys() {
             if (exView === 'discipline') {
-                const counts = disciplineCounts();
-                return DISCIPLINE_DEFS.filter(d => (counts[d.name] || 0) > 0).map(d => d.name);
+                return discActiveKeys();
             }
             return lmBlocks.filter(b => b.count > 0).map(b => String(b.id));
         }
